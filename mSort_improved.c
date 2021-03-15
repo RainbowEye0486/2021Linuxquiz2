@@ -13,13 +13,22 @@
     })
 #endif
 
+#define list_entry(node, type, member) container_of(node, type, member)
+
+#define list_first_entry(head, type, member) \
+    list_entry((head)->next, type, member)
+
+#define list_for_each(node, head) \
+    for (node = (head)->next; node != (head); node = node->next)
+
+
 struct list_head {
     struct list_head *prev, *next;
+    char *value;
 };
 
 typedef struct __element {
     char *value;
-    struct __element *next;
     struct list_head list;
 } list_ele_t;
 
@@ -29,6 +38,19 @@ static inline void INIT_LIST_HEAD(struct list_head *head)
 {
     head->next = head; head->prev = head;
 }
+
+/*
+Initialization of list_head
+*/
+static struct list_head *new_head()
+{
+    struct list_head *newh = malloc(sizeof(struct list_head));
+    if (!newh)
+        return NULL;
+    INIT_LIST_HEAD(newh);
+    return newh;
+}
+
 
 static inline void list_add_tail(struct list_head *node, struct list_head *head)
 {
@@ -93,15 +115,8 @@ static inline void list_cut_position(struct list_head *head_to,
     node->next = head_to;
     head_to->next = head_from_first;
     head_to->next->prev = head_to;
+
 }
-
-#define list_entry(node, type, member) container_of(node, type, member)
-
-#define list_first_entry(head, type, member) \
-    list_entry((head)->next, type, member)
-
-#define list_for_each(node, head) \
-    for (node = (head)->next; node != (head); node = node->next)
 
 static list_ele_t *get_middle(struct list_head *list)
 {
@@ -118,7 +133,7 @@ static void list_merge(struct list_head *lhs,
                        struct list_head *rhs,
                        struct list_head *head)
 {
-    INIT_LIST_HEAD(head);
+    
     if (list_empty(lhs)) {
         list_splice_tail(lhs, head);
         return;
@@ -128,78 +143,40 @@ static void list_merge(struct list_head *lhs,
         return;
     }
 
+    struct list_head *tmp_head = new_head();
+    INIT_LIST_HEAD(tmp_head);
     while (!list_empty(lhs) && !list_empty(rhs)) {
         char *lv = list_entry(lhs->next, list_ele_t, list)->value;
         char *rv = list_entry(rhs->next, list_ele_t, list)->value;
         struct list_head *tmp = strcmp(lv, rv) <= 0 ? lhs->next : rhs->next;
         list_del(tmp);
-        list_add_tail(tmp, head);
+        list_add_tail(tmp, tmp_head);
     }
-    list_splice_tail(list_empty(lhs) ? rhs : lhs, head);
+    list_splice_tail(list_empty(lhs) ? rhs : lhs, tmp_head);
+    INIT_LIST_HEAD(head);
+    list_splice_tail(tmp_head, head);
 }
 
-void list_merge_sort(queue_t *q)
+void list_merge_sort(struct list_head *list_l)
 {
-    if (list_is_singular(&q->list))
+    if (list_is_singular(list_l))
         return;
 
-    queue_t left;
-    struct list_head sorted;
-    INIT_LIST_HEAD(&left.list);
-    list_cut_position(&left.list, &q->list, &get_middle(&q->list)->list);
-    list_merge_sort(&left);
-    list_merge_sort(q);
-    list_merge(&left.list, &q->list, &sorted);
-    INIT_LIST_HEAD(&q->list);
-    list_splice_tail(&sorted, &q->list);
-}
+    struct list_head *list_r = new_head();
+    list_r->value = "head";
 
+    list_cut_position(list_r, list_l, &get_middle(list_l)->list);
+    list_merge_sort(list_r);
+    list_merge_sort(list_l);
+    list_merge(list_l, list_r, list_l);
+}
 
 /*
-Using data from cities.txt validating
+Given a list_head *head, insert a new list_ele_t at the tail of list.
 */
-
-static bool validate(queue_t *q)
+bool insert_head(struct list_head *head, char *s)
 {
-    struct list_head *node;
-    list_for_each (node, &q->list) {
-        if (node->next == &q->list)
-            break;
-        if (strcmp(list_entry(node, list_ele_t, list)->value,
-                   list_entry(node->next, list_ele_t, list)->value) > 0)
-            return false;
-    }
-    return true;
-}
-
-static queue_t *q_new()
-{
-    queue_t *q = malloc(sizeof(queue_t));
-    if (!q) return NULL;
-
-    q->head = q->tail = NULL;
-    q->size = 0;
-    INIT_LIST_HEAD(&q->list);
-    return q;
-}
-
-static void q_free(queue_t *q)
-{
-    if (!q) return;
-
-    list_ele_t *current = q->head;
-    while (current) {
-        list_ele_t *tmp = current;
-        current = current->next;
-        free(tmp->value);
-        free(tmp);
-    }
-    free(q);
-}
-
-bool q_insert_head(queue_t *q, char *s)
-{
-    if (!q) return false;
+    if (!head) return false;
 
     list_ele_t *newh = malloc(sizeof(list_ele_t));
     if (!newh)
@@ -210,15 +187,27 @@ bool q_insert_head(queue_t *q, char *s)
         free(newh);
         return false;
     }
-
     newh->value = new_value;
-    newh->next = q->head;
-    q->head = newh;
-    if (q->size == 0)
-        q->tail = newh;
-    q->size++;
-    list_add_tail(&newh->list, &q->list);
+    newh->list.value = new_value;//test
+    list_add_tail(&newh->list, head);
 
+    return true;
+}
+
+
+/*
+Using data from cities.txt validating
+*/
+static bool validate(struct list_head *head)
+{
+    struct list_head *node;
+    list_for_each (node, head) {
+        if (node->next == head)
+            break;
+        if (strcmp(list_entry(node, list_ele_t, list)->value,
+                   list_entry(node->next, list_ele_t, list)->value) > 0)
+            return false;
+    }
     return true;
 }
 
@@ -230,15 +219,17 @@ int main(void)
         exit(EXIT_FAILURE);
     }
 
-    queue_t *q = q_new();
+    struct list_head *head = new_head();
+    head->value = "head";
     char buf[256];
     while (fgets(buf, 256, fp))
-        q_insert_head(q, buf);
+        insert_head(head, buf);
     fclose(fp);
 
-    list_merge_sort(q);
-    assert(validate(q));
 
-    q_free(q);
+    list_merge_sort(head);
 
+    assert(validate(head));
+
+    
 }
